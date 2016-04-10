@@ -17,7 +17,7 @@ function geofield_update_help($path, $arg) {
       break;
   }
   return $output;
-} 
+}
 
 /**
  * Implements hook_permission().
@@ -52,7 +52,7 @@ function geofield_update_menu() {
 /**
  * Administration page to set the default menu system
  *
- * @return Drupal form 
+ * @return Drupal form
  */
 function geofield_update_admin() {
 	$form = array();
@@ -66,7 +66,7 @@ function geofield_update_admin() {
 		'#description' => t("The maximum number of folders that can be created.  Set to 0 for unlimited."),
 		'#required' => TRUE,
 	);
-	
+
 	$form['intrigue_memupload_filedirectory'] = array(
 		'#type' => 'textfield',
 		'#title' => t('Where are files stored?'),
@@ -76,15 +76,17 @@ function geofield_update_admin() {
 		'#description' => t("The relative location for the file directory (must be writeable).  This should begin with a slash /"),
 		'#required' => TRUE,
 	);
-	
+
 	return system_settings_form($form);
 }
 
 function geofield_update_cron() {
 
   // get the number of nodes to process
-
   $numupdated = 0;
+  $nodes = array();
+  $updated_nids = array();
+  $skipped_nids = array();
 
 
   $contenttypes = variable_get('geofield_update_content_types', array());
@@ -93,36 +95,94 @@ function geofield_update_cron() {
 
 
   if (!empty($ctypes)) {
-    $node_ids = db_query("SELECT nid 
+
+
+
+    $nodes = db_query("SELECT nid, type
                         FROM {node}
-                       WHERE type IN ( :type )
+                       WHERE type IN (:type)
 
                         AND nid NOT IN (
-                                  SELECT entity_id 
-                                    FROM {field_data_field_geofield} 
-                                   WHERE bundle IN ( :type ) ) 
+                                  SELECT entity_id
+                                    FROM {field_data_field_geofield}
+                                   WHERE bundle IN (:type) )
+                        AND nid NOT IN (
+                                  SELECT entity_id
+                                    FROM {geofield_update}
+                                   WHERE bundle IN  (:type) )
                       LIMIT ".variable_get('geofield_update_nodes_per_cron', GEOFIELD_UPDATE_PROCESS_PER_CRON)."
-                       ", 
+                       ",
 
-                       array(':type' => implode(',',$ctypes))
+                       array(':type' => $ctypes))->fetchAllAssoc("nid");
 
-                       )->fetchCol();
 
-    if (!empty($node_ids)) {
-      foreach ($node_ids as $nid) {
-        // update the node    
-        $node = node_load($nid);
-        node_save($node);  
-        $numupdated++;    
+    if (!empty($nodes)) {
+
+      foreach ($nodes as $node) {
+        // update the node
+        $mynode = node_load($node->nid);
+        node_save($mynode);
+        $numupdated++;
       }
     }
 
+    // get nodes updated from group of node_ids
+    $updated_nids = db_query("SELECT entity_id
+                        FROM {field_data_field_geofield}
+                       WHERE entity_id IN (:nids)", array(':nids' => array_keys($nodes)))
+                    ->fetchAllAssoc("entity_id");
+
+
+    // if we have nodes that were updated let's save them to the geofield_update table
+    if (count($updated_nids) > 0) {
+
+      $updatednodes = db_insert('geofield_update')->fields(array('bundle', 'entity_id', 'updated', 'created'));
+
+      // save updated nids to geofield_update
+      foreach($updated_nids as $value) {
+        $updatednodes->values(array(
+                          'bundle'=>$nodes[$value->entity_id]->type,
+                          'entity_id'=>$nodes[$value->entity_id]->nid,
+                          'updated'=>1,
+                          'created' => REQUEST_TIME));
+      }
+      $d = $updatednodes->execute();
+    }
+
+    // get nodes skipped
+    $skipped_nids = array_diff(array_keys($nodes), array_keys($updated_nids));
+
+    // if we have nodes that were updated let's save them to the geofield_update table
+    if (count($skipped_nids) > 0) {
+
+      $skippednodes = db_insert('geofield_update')->fields(array('bundle', 'entity_id', 'updated', 'created'));
+
+      // save skipped nids to geofield_update
+      foreach($skipped_nids as $value) {
+        $skippednodes->values(array(
+                          'bundle'=>$nodes[$value->entity_id]->type,
+                          'entity_id'=>$nodes[$value->entity_id]->nid,
+                          'updated'=>0,
+                          'created' => REQUEST_TIME));
+      }
+
+      $d = $updatednodes->execute();
+    }
+
+    print('<h4>$updatednodes</h4>');
+    print_r($updatednodes);
+    print('<h4>$skippednodes</h4>');
+    print_r($skippednodes);
+    die();
+
+
     if ($numupdated) {
       // add link to every node
-      foreach ($node_ids as $key => $value) {
-        $node_ids[$key] = l($value, 'node/'.$value);
-      }
-      watchdog('geofield_update', $numupdated . ' geofields were updated with these node ids: :nodes', array(':nodes' => implode(',',$node_ids)), WATCHDOG_INFO);
+      //foreach ($node_ids as $key => $value) {
+        //$node_ids[$key] = l($value, 'node/'.$value);
+      //}
+
+      watchdog('geofield_update', count($updated_nids) . ' geofield nodes updated. '.count($skipped_nids) . ' geofield nodes skipped.', array(), WATCHDOG_INFO);
     }
 
   }

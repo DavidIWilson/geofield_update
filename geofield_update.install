@@ -1,0 +1,67 @@
+<?php
+
+/**
+* Implementation of hook_enable().
+*/
+function geofield_update_enable() {
+  //Check if table exists, if not install the schema.
+  if(db_table_exists('geofield_update') == FALSE) {
+    drupal_install_schema('geofield_update');
+  }
+}
+
+
+
+/**
+* Implementation of hook_uninstall().
+*/
+function geofield_update_uninstall() {
+  //Check if table exists, if not install the schema.
+  if(db_table_exists('geofield_update') == FALSE) {
+    drupal_uninstall_schema('geofield_update');
+  }
+}
+
+
+
+/**
+* Implementation of hook_schema().
+*/
+function geofield_update_schema() {
+	$schema['geofield_update'] = array(
+	'description' => t('Stores list of nodes updated or skipped.'),
+	'fields' => array(
+        'id' => array(
+          'description' => 'The primary identifier for a node.',
+          'type' => 'serial',
+          'size' => 'normal',
+          'unsigned' => TRUE),
+        'bundle' => array(
+          'description' => 'The bundle of the type.',
+          'type' => 'varchar',
+          'length' => '32',
+          'not null' => TRUE),
+	      'entity_id' => array(
+	        'description' => 'The primary identifier for a node.',
+	        'type' => 'int',
+          'size' => 'normal',
+	        'unsigned' => TRUE,
+	        'not null' => TRUE),
+	      'updated' => array(
+	        'description' => '1=updated, 0=skipped',
+          'type' => 'int',
+          'not null' => TRUE,
+          'size' => 'tiny',
+          'default' => 0),
+        'created' => array(
+          'description' => 'created timestamp',
+          'type' => 'int',
+          'size' => 'normal',
+          'unsigned' => TRUE,
+          'not null' => TRUE),
+	    ),
+	    'primary key' => array('id'),
+	);
+
+	return $schema;
+}
