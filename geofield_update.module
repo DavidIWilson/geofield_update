@@ -118,6 +118,10 @@ function geofield_update_cron() {
     }
 
     if ($numupdated) {
+      // add link to every node
+      foreach ($node_ids as $key => $value) {
+        $node_ids[$key] = l($value, 'node/'.$value);
+      }
       watchdog('geofield_update', $numupdated . ' geofields were updated with these node ids: :nodes', array(':nodes' => implode(',',$node_ids)), WATCHDOG_INFO);
     }
 
